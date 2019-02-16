@@ -37,6 +37,8 @@
 #include <conio.h>
 #include <fcntl.h>
 #define fileno _fileno
+#else
+#include <signal.h>
 #endif
 
 #include "z180/z180.h"
@@ -199,9 +201,13 @@ void do_timers() {
 
 void boot1dma () {
    FILE* f;
-   f=fopen("markivrom.bin","rb");
-   fread(&_ram[0],1,524288,f);
-   fclose(f);
+   if (!(f=fopen("markivrom.bin","rb"))) {
+     printf("No ROM found.\n");
+	 g_quit = 1;
+   } else {
+     fread(&_ram[0],1,524288,f);
+     fclose(f);
+   }
 }
 
 void io_device_update() {
@@ -225,12 +231,29 @@ void InitIDE() {
    atexit(CloseIDE);
 }
 
+#ifndef _WIN32
+void sigint_handler(int s)	{
+	// POSIX SIGINT handler
+	// do nothing
+}
+
+void sigquit_handler(int s)	{
+	// POSIX SIGQUIT handler
+	// make sure atexit is called
+	printf("\nExiting emulation.\n");
+	shutdown_socket_ports(); // close sockets to prevent waiting for a connection
+	g_quit = 1; // make sure atexit is called
+}
+#endif
+
 void disableCTRLC() {
 #ifdef _WIN32
 	HANDLE consoleHandle = GetStdHandle(STD_INPUT_HANDLE);
 	DWORD consoleMode;
 	GetConsoleMode(consoleHandle,&consoleMode);
 	SetConsoleMode(consoleHandle,consoleMode&~ENABLE_PROCESSED_INPUT);
+#else
+	signal(SIGINT, sigint_handler);
 #endif
 }
 
@@ -247,12 +270,20 @@ int main(int argc, char** argv)
 {
 	printf("z180emu v1.0 Mark IV\n");
 
+	disableCTRLC();
+#ifndef _WIN32
+	// on POSIX, route SIGQUIT (CTRL+\) to graceful shutdown
+	signal(SIGQUIT, sigquit_handler);
+#endif
+	// on MINGW, keep CTRL+Break (and window close button) enabled
+	// MINGW always calls atexit in these cases
+
 #ifdef SOCKETCONSOLE
 	init_TCPIP();
 	init_socket_port(0); // ASCI Console
 	atexit(shutdown_socket_ports);
 #endif
-	io_device_update();
+	io_device_update(); // wait for serial socket connections
 
 	if (argc==2 && !strcmp(argv[1],"d")) starttrace = 0;
 	else if (argc==3 && !strcmp(argv[1],"d")) starttrace = atoll(argv[2]);
@@ -261,7 +292,6 @@ int main(int argc, char** argv)
 #ifdef _WIN32
 	setmode(fileno(stdout), O_BINARY);
 #endif
-	disableCTRLC();
 
 	boot1dma();
 	InitIDE();
@@ -276,12 +306,12 @@ int main(int argc, char** argv)
 	cpu_reset_z180(cpu);
 	//printf("2\n");fflush(stdout);
 
-    struct timeval t0;
-    struct timeval t1;
+	struct timeval t0;
+	struct timeval t1;
 	gettimeofday(&t0, 0);
 	int runtime=50000;
 
-	g_quit = 0;
+	//g_quit = 0;
 	while(!g_quit) {
 		if(instrcnt>=starttrace) VERBOSE=1;
 		cpu_execute_z180(cpu,10000);
@@ -291,5 +321,5 @@ int main(int argc, char** argv)
 			g_quit=1;*/
 	}
 	gettimeofday(&t1, 0);
-	printf("instrs:%I64u, time:%g\n",instrcnt, (t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f);
+	printf("instrs:%llu, time:%g\n",instrcnt, (t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f);
 }

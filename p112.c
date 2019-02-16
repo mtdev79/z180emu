@@ -38,6 +38,8 @@ int enable_aux = 1;
 #include <conio.h>
 #include <fcntl.h>
 #define fileno _fileno
+#else
+#include <signal.h>
 #endif
 
 #include "z180/z180.h"
@@ -287,9 +289,13 @@ void do_timers() {
 
 void boot1dma () {
    FILE* f;
-   f=fopen("p112rom.bin","rb");
-   fread(&_rom[0],1,32768,f);
-   fclose(f);
+   if (!(f=fopen("p112rom.bin","rb"))) {
+     printf("No ROM found.\n");
+	 g_quit = 1;
+   } else {
+     fread(&_rom[0],1,32768,f);
+     fclose(f);
+   }
 }
 
 void io_device_update() {
@@ -309,13 +315,24 @@ void InitIDE() {
    if (if00=fopen("ide00.dsk","r+b")) {
      ifd00=fileno(if00);
      ide_attach(ic0,0,ifd00);
-     ic0->drive[0].cylinders=1024;
-     ic0->drive[0].heads=16;
-     ic0->drive[0].sectors=63;
    }
    ide_reset_begin(ic0);
    atexit(CloseIDE);
 }
+
+#ifndef _WIN32
+void sigint_handler(int s)	{
+	// POSIX SIGINT handler
+	// do nothing
+}
+
+void sigquit_handler(int s)	{
+	// POSIX SIGQUIT handler
+	printf("\nExiting emulation.\n");
+	shutdown_socket_ports(); // close sockets to prevent waiting for a connection
+	g_quit = 1; // make sure atexit is called
+}
+#endif
 
 void disableCTRLC() {
 #ifdef _WIN32
@@ -323,6 +340,8 @@ void disableCTRLC() {
 	DWORD consoleMode;
 	GetConsoleMode(consoleHandle,&consoleMode);
 	SetConsoleMode(consoleHandle,consoleMode&~ENABLE_PROCESSED_INPUT);
+#else
+	signal(SIGINT, sigint_handler);
 #endif
 }
 
@@ -349,13 +368,21 @@ int main(int argc, char** argv)
 {
 	printf("z180emu v1.0 P112\n");
 
+	disableCTRLC();
+#ifndef _WIN32
+	// on POSIX, route SIGQUIT (CTRL+\) to graceful shutdown
+	signal(SIGQUIT, sigquit_handler);
+#endif
+	// on MINGW, keep CTRL+Break (and window close button) enabled
+	// MINGW always calls atexit in these cases
+
 #ifdef SOCKETCONSOLE
 	init_TCPIP();
 	init_socket_port(0); // ESCC Console
 	init_socket_port(1); // FDC AUX
 	atexit(shutdown_socket_ports);
 #endif
-	io_device_update();
+	io_device_update(); // wait for serial socket connections
 
 	if (argc==2 && !strcmp(argv[1],"d")) starttrace = 0;
 	else if (argc==3 && !strcmp(argv[1],"d")) starttrace = atoll(argv[2]);
@@ -364,7 +391,6 @@ int main(int argc, char** argv)
 #ifdef _WIN32
 	setmode(fileno(stdout), O_BINARY);
 #endif
-	disableCTRLC();
 
 	boot1dma();
 	InitIDE();
@@ -385,12 +411,12 @@ int main(int argc, char** argv)
 	cpu_reset_z180(cpu);
 	//printf("2\n");fflush(stdout);
 
-    struct timeval t0;
-    struct timeval t1;
+	struct timeval t0;
+	struct timeval t1;
 	gettimeofday(&t0, 0);
 	int runtime=50000;
 
-	g_quit = 0;
+	//g_quit = 0;
 	while(!g_quit) {
 		if(instrcnt>=starttrace) VERBOSE=1;
 		cpu_execute_z180(cpu,10000);
@@ -400,6 +426,6 @@ int main(int argc, char** argv)
 			g_quit=1;*/
 	}
 	gettimeofday(&t1, 0);
-	printf("instrs:%I64u, time:%g\n",instrcnt, (t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f);
+	printf("instrs:%llu, time:%g\n",instrcnt, (t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f);
 
 }

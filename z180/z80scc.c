@@ -565,7 +565,8 @@ struct z80scc_device *z80scc_device_create(void *owner, char *tag, UINT32 type, 
 	d->m_wr0_ptrbits = 0;
 	d->m_cputag = NULL;
 
-	for (int i=0; i<6; i++)
+	int i;
+	for (i=0; i<6; i++)
 		d->m_int_state[i] = 0;
 
 	return d;
@@ -705,7 +706,8 @@ int z80scc_device_z80daisy_irq_state(const device_t *device)
 			((struct z80scc_device *)device)->m_int_state[3], ((struct z80scc_device *)device)->m_int_state[4], ((struct z80scc_device *)device)->m_int_state[5]);
 
 	// loop over all interrupt sources
-	for (int i=0; i<6; i++)
+	int i;
+	for (i=0; i<6; i++)
 	{
 		// if we're servicing a request, don't indicate more interrupts
 		if (((struct z80scc_device *)device)->m_int_state[i] & Z80_DAISY_IEO)
@@ -733,7 +735,8 @@ int z80scc_device_z80daisy_irq_ack(const device_t *device)
 
 	LOGINT("%s %s \n",((struct z80scc_device *)device)->m_tag, FUNCNAME);
 	// loop over all interrupt sources
-	for (int i=0; i<6; i++)
+	int i;
+	for (i=0; i<6; i++)
 	{
 		// find the first channel with an interrupt requested
 		if (((struct z80scc_device *)device)->m_int_state[i] & Z80_DAISY_INT)
@@ -803,7 +806,8 @@ void z80scc_device_reset_interrupts(struct z80scc_device *device)
 {
 	LOGINT("%s %s \n",device->m_tag, FUNCNAME);
 	// reset internal interrupt sources
-	for (int i=0; i<6; i++)
+	int i;
+	for (i=0; i<6; i++)
 	{
 		device->m_int_state[i] = 0;
 	}
@@ -1297,13 +1301,14 @@ void z80scc_channel_device_start(struct z80scc_channel *ch)
 	ch->m_wr0 = ch->m_wr1 = ch->m_wr2 = ch->m_wr3  = ch->m_wr4  = ch->m_wr5  = ch->m_wr6  = ch->m_wr7 = ch->m_wr7p = ch->m_wr8
 		= ch->m_wr10 = ch->m_wr11 = ch->m_wr12 = ch->m_wr13 = ch->m_wr14 = ch->m_wr15 = 0;
 
-	for (int i=0; i<sizeof(ch->m_rx_data_fifo); i++)
+	int i;
+	for (i=0; i<sizeof(ch->m_rx_data_fifo); i++)
 		ch->m_rx_data_fifo[i] = 0;
-	for (int i=0; i<sizeof(ch->m_rx_error_fifo); i++)  // TODO: Status FIFO needs to be fixed
+	for (i=0; i<sizeof(ch->m_rx_error_fifo); i++)  // TODO: Status FIFO needs to be fixed
 		ch->m_rx_error_fifo[i] = 0;
-	for (int i=0; i<sizeof(ch->m_tx_data_fifo); i++)
+	for (i=0; i<sizeof(ch->m_tx_data_fifo); i++)
 		ch->m_tx_data_fifo[i] = 0;
-	for (int i=0; i<sizeof(ch->m_tx_error_fifo); i++) //  TODO: Status FIFO needs to be fixed
+	for (i=0; i<sizeof(ch->m_tx_error_fifo); i++) //  TODO: Status FIFO needs to be fixed
 		ch->m_tx_error_fifo[i] = 0;
 
 	ch->m_uart->m_wr0_ptrbits = 0;
@@ -1831,7 +1836,7 @@ uint8_t z80scc_channel_do_sccreg_rr2(struct z80scc_channel *ch)
 
 		LOGINT(" - Channel B so we might need to update the vector modification\n");
 		// loop over all interrupt sources
-		for (int i=0; i<6; i++)
+		for (i=0; i<6; i++)
 		{
 			// find the first channel with an interrupt requested
 			if (ch->m_uart->m_int_state[i] & Z80_DAISY_INT)
@@ -1846,7 +1851,7 @@ uint8_t z80scc_channel_do_sccreg_rr2(struct z80scc_channel *ch)
 				}
 				break;
 			}
-			i++;
+			//i++;
 		}
 	}
 	return ch->m_rr2;
@@ -2155,7 +2160,8 @@ void z80scc_channel_do_sccreg_wr0(struct z80scc_channel *ch, uint8_t data)
 		{
 			LOGCMD("%s: %c : Reset Highest IUS\n", ch->m_uart->m_tag, 'A' + ch->m_index);
 			// loop over all interrupt sources
-			for (int i=0; i<6; i++)
+			int i;
+			for (i=0; i<6; i++)
 			{
 				// find the first channel with an interrupt requested
 				if (ch->m_uart->m_int_state[i] & Z80_DAISY_IEO)

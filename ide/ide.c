@@ -17,6 +17,7 @@
  *	along with IDE-emu.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* Revision: 2019-02-10 Hector Peraza z180emu */
 /* Revision: 2019-01-26 Michal Tomek z180emu */
 
 #include <stdio.h>
@@ -73,6 +74,8 @@
 #define IDE_CMD_INTPARAMS	0x91
 #define IDE_CMD_IDENTIFY	0xEC
 #define IDE_CMD_SETFEATURES	0xEF
+
+//#define IDE_DEBUG
 
 const uint8_t ide_magic[8] = {
   '1','D','E','D','1','5','C','0'
@@ -138,13 +141,22 @@ static off_t xlate_block(struct ide_taskfile *t)
 {
   struct ide_drive *d = t->drive;
   if (t->lba4 & DEVH_LBA) {
-/*    fprintf(stderr, "XLATE LBA %02X:%02X:%02X:%02X\n", 
-      t->lba4, t->lba3, t->lba2, t->lba1);*/
+#ifdef IDE_DEBUG
+    fprintf(stderr, "XLATE LBA %02X:%02X:%02X:%02X\n", 
+      t->lba4, t->lba3, t->lba2, t->lba1);
+#endif
     if (d->lba)
       return 2 + (((t->lba4 & DEVH_HEAD) << 24) | (t->lba3 << 16) | (t->lba2 << 8) | t->lba1);
     ide_fault(d, "LBA on non LBA drive");
   }
-  return 2 + (((t->lba4 & DEVH_HEAD) * d->cylinders + ((t->lba3 << 8) + t->lba2)) * d->sectors + t->lba1 - 1);
+#ifdef IDE_DEBUG
+    fprintf(stderr, "XLATE CHS %d/%d/%d\n",
+      (t->lba3 << 8) + t->lba2, t->lba4 & DEVH_HEAD, t->lba1 - 1);
+    fprintf(stderr, "DISK CHS %d/%d/%d\n",
+      d->cylinders, d->heads, d->sectors);
+#endif
+  //return 2 + (((t->lba4 & DEVH_HEAD) * d->cylinders + ((t->lba3 << 8) + t->lba2)) * d->sectors + t->lba1 - 1);
+  return 2 + ((((t->lba3 << 8) + t->lba2) * d->heads + (t->lba4 & DEVH_HEAD)) * d->sectors + t->lba1 - 1);
 }
 
 /* Indicate the drive is ready */
@@ -289,10 +301,13 @@ static void cmd_readsectors_complete(struct ide_taskfile *tf)
   tf->status |= ST_DRQ;
   /* 0 = 256 sectors */
   d->length = tf->count ? tf->count : 256;
-/*  fprintf(stderr, "READ %d SECTORS @ %ld\n", d->length, d->offset);  */
+#ifdef IDE_DEBUG
+  fprintf(stderr, "READ %d SECTORS @ %ld\n", d->length, d->offset);
+#endif
   if (d->offset == -1 ||  lseek(d->fd, 512 * d->offset, SEEK_SET) == -1) {
     tf->status |= ST_ERR;
     tf->error |= ERR_IDNF;
+    ide_fault(d, "seek error on readsectors");
     /* return null data */
     completed(tf);
     return;
@@ -315,6 +330,7 @@ static void cmd_verifysectors_complete(struct ide_taskfile *tf)
   if (lseek(d->fd, 512 * (d->offset + d->length - 1), SEEK_SET) == -1) {
     tf->status |= ST_ERR;
     tf->error |= ERR_IDNF;
+    ide_fault(d, "seek error on verifysectors");
   }
   completed(tf);
 }
@@ -340,6 +356,7 @@ static void cmd_seek_complete(struct ide_taskfile *tf)
   if (d->offset == -1 || lseek(d->fd, 512 * d->offset, SEEK_SET) == -1) {
     tf->status |= ST_ERR;
     tf->error |= ERR_IDNF;
+    ide_fault(d, "seek error");
   }
   completed(tf);
 }
@@ -380,10 +397,13 @@ static void cmd_writesectors_complete(struct ide_taskfile *tf)
   tf->status |= ST_DRQ;
   /* 0 = 256 sectors */
   d->length = tf->count ? tf->count : 256;
-/*  fprintf(stderr, "WRITE %d SECTORS @ %ld\n", d->length, d->offset); */
+#ifdef IDE_DEBUG
+  fprintf(stderr, "WRITE %d SECTORS @ %ld\n", d->length, d->offset);
+#endif
   if (d->offset == -1 ||  lseek(d->fd, 512 * d->offset, SEEK_SET) == -1) {
     tf->status |= ST_ERR;
     tf->error |= ERR_IDNF;
+    ide_fault(d, "seek error on writesectors");
     /* return null data */
     completed(tf);
     return;
@@ -717,6 +737,9 @@ int ide_attach(struct ide_controller *c, int drive, int fd)
   }
   d->fd = fd;
   d->present = 1;
+  d->cylinders = le16(d->identify[1]);
+  d->heads     = le16(d->identify[3]);
+  d->sectors   = le16(d->identify[6]);
   if (d->identify[49] & le16(1 << 9))
     d->lba = 1;
   else
@@ -856,7 +879,7 @@ int ide_make_drive(uint8_t type, int fd)
       s = 16;
       make_ascii(ident + 23, "A001.001", 8);
       make_ascii(ident + 27, "ACME COYOTE v0.1", 40);
-      break;  
+      break;
   }
   ident[1] = le16(c);
   ident[3] = le16(h);

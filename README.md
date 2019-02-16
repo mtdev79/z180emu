@@ -14,10 +14,10 @@ x86_64-linux-gnu gcc version 6.3.0 20170516 (Debian 6.3.0-18+deb9u1)
 
 
 ## Code style
-ANSI C  
+C89  
 I convert all upstream C++ code to pure C. I generally find emulators easier to write and debug in C than C++.  
 C is also more portable as there is no libstdc++ dependency.  
- 
+
 ## Screenshots
 
 ## Tech/framework used
@@ -42,7 +42,7 @@ GNU make
 -CompactFlash, GIDE, ZIDE (other can be ported)  
 **DS1202/1302 RTC with NVRAM file storage**  
 **Z180 dissasembler and simple yet powerful tracer**  
-Serial ports are implemented as **byte-oriented streams over a raw TCP socket** (works with Putty "raw", nc, ckermit etc.)  
+Serial ports are implemented as **byte-oriented streams over a raw TCP socket** (works with Putty, nc, ckermit etc.)  
 **Modular structure** allowing adding new boards and peripherals with reasonable effort  
 
 
@@ -127,6 +127,19 @@ Run with trace from 10000000-th instruction:
 p112 d 10000000 >mytrace.log
 ```
 The above can be used to bisect into the routine you're debugging.  
+
+---
+Exiting the emulator  
+CTRL+C/SIGINT is completely disabled to allow ^C passthrough to the emulated system, esp. in case socket console isn't used.  
+The emulator can be exited by CTRL+Break (or closing the window) on MinGW, and CTRL+\ (SIGQUIT) on POSIX systems.  
+
+---
+Socket console  
+If using Putty, set Connection type to "Raw".  
+For nc, use  
+```
+stty raw -echo; nc -C 127.0.0.1 10180
+```
 
 ## Contribute
 If you'd like to commit, please contact me (Michal Tomek) at <mtdev79@gmail.com>

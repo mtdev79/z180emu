@@ -24,7 +24,7 @@
  *
  */
 
-/* Revision: 2019-01-26 Michal Tomek z180emu */
+/* Revision: 2019-02-10 Michal Tomek z180emu */
 
 //#include "vice.h"
 
@@ -906,7 +906,7 @@ void rtc_save_context(uint8_t *ram, int ram_size, uint8_t *regs, int reg_size, c
     if (indata) {
         lib_free(indata);
     }
-    lib_free(filename);
+    //lib_free(filename);
 }
 
 static uint8_t *loaded_ram = NULL;

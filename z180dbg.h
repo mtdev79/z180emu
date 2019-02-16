@@ -92,7 +92,7 @@ void debugger_instruction_hook(device_t *device, offs_t curpc) {
 		for (i=0;i<(dres &DASMFLAG_LENGTHMASK);i++) printf("%02X",mem[curpc+i]);
 		for ( ;i<4;i++) {putchar(' ');putchar(' ');}
 		printf(" %s",ibuf);
-		if (strstr(ibuf,",(hl)")||strstr(ibuf,"ldi")||strstr(ibuf,"ldd"))
+		if (strstr(ibuf,",(hl)")||strstr(ibuf," (hl)")||strstr(ibuf,"ldi")||strstr(ibuf,"ldd"))
 			printf("\tm:%02X",debugger_getmem(device, cpu_get_state_z180(device,Z180_HL)));
 		else if (strstr(ibuf,",(de)"))
 			printf("\tm:%02X",debugger_getmem(device, cpu_get_state_z180(device,Z180_DE)));

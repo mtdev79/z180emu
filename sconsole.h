@@ -36,7 +36,7 @@
 #define SOCKET int
 #define closesocket close
 #define TCPIP_error errno
-#define SD_SEND SHUT_WR
+#define SD_BOTH SHUT_RDWR
 #define ioctlsocket ioctl
 #endif
 
@@ -45,7 +45,8 @@ SOCKET listen_sockets[MAX_SOCKET_PORTS];
 SOCKET client_sockets[MAX_SOCKET_PORTS];
 
 int init_TCPIP() {
-	for (int i=0;i<MAX_SOCKET_PORTS;i++) {
+	int i;
+	for (i=0;i<MAX_SOCKET_PORTS;i++) {
 		client_sockets[i] = INVALID_SOCKET;
 		listen_sockets[i] = INVALID_SOCKET;
 	}
@@ -90,6 +91,10 @@ int init_socket_port(int port) {
 		freeaddrinfo(res);
 		return -1;
 	}
+#ifndef _WIN32
+	e = 1; // enable socket reuse
+	setsockopt(listen_sockets[port], SOL_SOCKET, SO_REUSEADDR, &e, sizeof(int));
+#endif
 	if (bind( listen_sockets[port], res->ai_addr, (int)res->ai_addrlen) == SOCKET_ERROR) {
 		printf("Serial: bind err %d\n", TCPIP_error);
 		freeaddrinfo(res);
@@ -103,6 +108,7 @@ int init_socket_port(int port) {
 		closesocket(listen_sockets[port]);
 		return -1;
 	}
+
 	printf("Serial port %d listening on %s\n", port, port_str);
 	return 0;
 }
@@ -116,31 +122,40 @@ int open_socket_port(int port) {
 
 	client_sockets[port] = INVALID_SOCKET;
 	client_sockets[port] = accept(listen_sockets[port], NULL, NULL);
-	if (client_sockets[port] == INVALID_SOCKET) {
-		printf("Serial: accept err %d\n", TCPIP_error);
-		//closesocket(listen_sockets[port]);
-		return -1;
+	if (listen_sockets[port]!= INVALID_SOCKET ) {  // don't complain when shutting down
+		if (client_sockets[port] == INVALID_SOCKET) {
+			printf("Serial: accept err %d\n", TCPIP_error);
+			//closesocket(listen_sockets[port]);
+			return -1;
+		}
+		unsigned long mode = 1;
+		ioctlsocket(client_sockets[port], FIONBIO, &mode); // nonblocking
+		printf("Serial port %d connected\n",port);
 	}
-	unsigned long mode = 1;
-	ioctlsocket(client_sockets[port], FIONBIO, &mode); // nonblocking
-	printf("Serial port %d connected\n",port);
 	return 0;
 }
 
 void shutdown_socket_ports() {
 
-	for (int i=0;i<MAX_SOCKET_PORTS;i++) 
+	int i;
+	for (i=0;i<MAX_SOCKET_PORTS;i++) 
 	{
-		if (shutdown(client_sockets[i], SD_SEND) == SOCKET_ERROR) {
-			printf("Serial: shutdown err %d\n", TCPIP_error);
+		if (client_sockets[i] != INVALID_SOCKET) {
+			shutdown(client_sockets[i], SD_BOTH);
+			closesocket(client_sockets[i]);
+			client_sockets[i] = INVALID_SOCKET;
 		}
-	    closesocket(client_sockets[i]);
+		if (listen_sockets[i] != INVALID_SOCKET) {
+			shutdown(listen_sockets[i], SD_BOTH);
+			closesocket(listen_sockets[i]);
+			listen_sockets[i] = INVALID_SOCKET;
+		}
 	}
 	shutdown_TCPIP();
 }
 
 int char_available_socket_port(int port) {
-	  u_long iMode = 0;
+	  unsigned long iMode = 0;
 	  ioctlsocket(client_sockets[port], FIONREAD, &iMode);
 	  return iMode!=0;
 }

@@ -202,7 +202,8 @@ void z80_daisy_chain_init(struct z80_daisy_chain* d, struct z80daisy_interface *
 void z80_daisy_chain_post_reset(struct z80_daisy_chain* d)
 {
 	// loop over all chained devices and call their reset function
-	for (struct z80daisy_interface *intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
+	struct z80daisy_interface *intf;
+	for (intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
 		//intf->device().reset()
 		z80daisy_interface_post_reset(intf);
 }
@@ -216,7 +217,8 @@ void z80_daisy_chain_post_reset(struct z80_daisy_chain* d)
 int z80_daisy_chain_update_irq_state(struct z80_daisy_chain* d)
 {
 	// loop over all devices; dev[0] is highest priority
-	for (struct z80daisy_interface *intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
+	struct z80daisy_interface *intf;
+	for (intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
 	{
 		// if this device is asserting the INT line, that's the one we want
 		int state = intf->z80daisy_irq_state_cb(intf);
@@ -239,7 +241,8 @@ int z80_daisy_chain_update_irq_state(struct z80_daisy_chain* d)
 struct z80daisy_interface *z80_daisy_chain_get_irq_device(struct z80_daisy_chain* d)
 {
 	// loop over all devices; dev[0] is the highest priority
-	for (struct z80daisy_interface *intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
+	struct z80daisy_interface *intf;
+	for (intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
 	{
 		// if this device is asserting the INT line, that's the one we want
 		int state = intf->z80daisy_irq_state_cb(intf);
@@ -261,7 +264,8 @@ struct z80daisy_interface *z80_daisy_chain_get_irq_device(struct z80_daisy_chain
 void z80_daisy_chain_call_reti_device(struct z80_daisy_chain* d)
 {
 	// loop over all devices; dev[0] is the highest priority
-	for (struct z80daisy_interface *intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
+	struct z80daisy_interface *intf;
+	for (intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
 	{
 		// if this device is asserting the IEO line, that's the one we want
 		int state = intf->z80daisy_irq_state_cb(intf);
@@ -299,7 +303,8 @@ char * z80_daisy_chain_show_chain(struct z80_daisy_chain* d, char* s)
 	//std::ostringstream result;
 
 	// loop over all devices
-	for (struct z80daisy_interface *intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
+	struct z80daisy_interface *intf;
+	for (intf = d->m_chain; intf != NULL; intf = intf->m_daisy_next)
 	{
 		if (intf != d->m_chain)
 			strcat(s, " -> ");
