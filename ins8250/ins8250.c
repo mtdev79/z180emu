@@ -509,7 +509,7 @@ uint8_t ins8250_device_r(struct ins8250_device *d, offs_t offset)
 			data = d->m_regs.iir;
 			/* The documentation says that reading this register will
 			clear the int if this is the source of the int */
-			if ( d->m_regs.ier & COM_INT_PENDING_TRANSMITTER_HOLDING_REGISTER_EMPTY )
+			if ( (data & 0xf) == 0x02 )
 				ins8250_device_clear_int(d,COM_INT_PENDING_TRANSMITTER_HOLDING_REGISTER_EMPTY);
 			break;
 		case 3:
