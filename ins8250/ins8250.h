@@ -60,6 +60,12 @@ protected:
 	};
 
 #ifndef __Z80COMMON_H__
+#undef PARITY_NONE
+#undef PARITY_ODD
+#undef PARITY_EVEN
+#undef PARITY_MARK
+#undef PARITY_SPACE
+
 	enum parity_t
 	{
 		PARITY_NONE,     /* no parity. a parity bit will not be in the transmitted/received data */

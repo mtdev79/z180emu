@@ -293,6 +293,7 @@ void ins8250_device_clear_int(struct ins8250_device *d, int flag)
 void ins8250_device_update_baud_rate(struct ins8250_device *d)
 {
 	//set_rate(clock(), d->m_regs.dl * 16);
+	d->tx_timer = d->m_regs.dl;
 	LOG("[8250] set baud rate DL=%04x, baud=%d\n",d->m_regs.dl,d->m_clock / (d->m_regs.dl * 16));
 
 	// FIXME: Baud rate generator should not affect transmitter or receiver, but device_serial_interface resets them regardless.
@@ -890,12 +891,12 @@ void ns16550_device_set_timer(struct ins8250_device *d)
 	d->m_timeout = d->m_clock*4*8/(d->m_regs.dl*16);
 }
 
-uint8_t pc16552_r(struct pc16552_device *d, offs_t offset)
+uint8_t pc16552_device_r(struct pc16552_device *d, offs_t offset)
 {
 	return ins8250_device_r((offset & 8) ? d->m_chan1 : d->m_chan0, offset & 7);
 }
 
-void pc16552_w( struct pc16552_device *d, offs_t offset, uint8_t data )
+void pc16552_device_w( struct pc16552_device *d, offs_t offset, uint8_t data )
 {
 	ins8250_device_w((offset & 8) ? d->m_chan1 : d->m_chan0, offset & 7, data);
 }
