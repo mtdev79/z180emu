@@ -142,7 +142,7 @@ stty raw -echo; nc -C 127.0.0.1 10180
 ```
 
 ## Contribute
-If you'd like to commit, please contact me (Michal Tomek) at <mtdev79@gmail.com>
+If you'd like to commit, please contact me (Michal Tomek) at <mtdev79b@gmail.com>
 
 ## Credits
 Hector Peraza, for his ROM archive, MP/M, UZI and RSX180 OS images, all of which proved to be great tools for testing the emulator.  

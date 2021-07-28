@@ -1,7 +1,7 @@
 /*
  * sconsole.h - portable TCP socket serial port emulator
  *
- * Copyright (c) Michal Tomek 2018-2019 <mtdev79@gmail.com>
+ * Copyright (c) Michal Tomek 2018-2019 <mtdev79b@gmail.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
