@@ -1099,6 +1099,7 @@ UINT8 z180_readcontrol(struct z180_state *cpustate, offs_t port)
 		case Z180_CNTR:
 			data = cpustate->IO_CNTR & Z180_CNTR_RMASK;
 			data &= ~0x10; // Super Famicom Box sets the TE bit then wants it to be toggled after 8 bits transmitted
+                        data &= ~0x20; // Clear the RE
 			LOG("Z180 '%s' CNTR   rd $%02x ($%02x)\n", cpustate->device->m_tag, data, cpustate->io[port]);
 			break;
 
