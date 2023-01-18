@@ -13,7 +13,7 @@
 #ifndef __Z80COMMON_H__
 #define __Z80COMMON_H__
 
-int VERBOSE;
+extern int VERBOSE;
 #include <stdio.h>
 #define logerror printf
 #define LOG(...) do { if (VERBOSE) logerror (__VA_ARGS__); } while (0)

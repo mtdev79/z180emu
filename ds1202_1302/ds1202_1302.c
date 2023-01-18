@@ -42,7 +42,7 @@
 #define lib_calloc calloc
 #define lib_free free
 
-int VERBOSE;
+extern int VERBOSE;
 #define mon_out(x)  if (VERBOSE) printf x
 
 /* The DS1202 and DS1302 are serial line based RTCs, they have the following features:

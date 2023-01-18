@@ -11,7 +11,7 @@
 
 #pragma once
 
-int VERBOSE;
+extern int VERBOSE;
 #include <stdio.h>
 #ifndef LOG
 #define LOG(...) do { if (VERBOSE) printf (__VA_ARGS__); } while (0)
