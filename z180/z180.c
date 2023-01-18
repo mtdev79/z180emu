@@ -1103,8 +1103,12 @@ UINT8 z180_readcontrol(struct z180_state *cpustate, offs_t port)
 			break;
 
 		case Z180_TRDR:
-			data = cpustate->IO_TRDR & Z180_TRDR_RMASK;
-			logerror("Z180 '%s' TRDR   rd $%02x ($%02x)\n", cpustate->device->m_tag, data, cpustate->io[port]);
+                        if (cpustate->device->z180csi_rx_cb)
+                            data = cpustate->device->z180csi_rx_cb(cpustate->device,0);
+                        else {
+                            logerror("Z180 '%s' TRDR   rd $%02x ($%02x)\n", cpustate->device->m_tag, data, cpustate->io[port]);
+			    data = cpustate->IO_TRDR & Z180_TRDR_RMASK;
+                        }
 			break;
 
 		case Z180_TMDR0L:
@@ -1666,8 +1670,11 @@ void z180_writecontrol(struct z180_state *cpustate, offs_t port, UINT8 data)
 			break;
 
 		case Z180_TRDR:
-			LOG("Z180 '%s' TRDR   wr $%02x ($%02x)\n", cpustate->device->m_tag, data,  data & Z180_TRDR_WMASK);
 			cpustate->IO_TRDR = (cpustate->IO_TRDR & ~Z180_TRDR_WMASK) | (data & Z180_TRDR_WMASK);
+                        if (cpustate->device->z180csi_tx_cb)
+                            cpustate->device->z180csi_tx_cb(cpustate->device,0,data);
+                        else
+                            LOG("Z180 '%s' TRDR   wr $%02x ($%02x)\n", cpustate->device->m_tag, data,  data & Z180_TRDR_WMASK);
 			break;
 
 		case Z180_TMDR0L:
@@ -2424,6 +2431,7 @@ struct z180_device *cpu_create_z180(char *tag, UINT32 type, UINT32 clock,
     struct address_space *ram, struct address_space *rom /* only on Z182 */, 
 	struct address_space *iospace, device_irq_acknowledge_callback irqcallback, struct z80daisy_interface *daisy_init,
 	rx_callback_t z180asci_rx_cb,tx_callback_t z180asci_tx_cb,
+        rx_callback_t z180csi_rx_cb, tx_callback_t z180csi_tx_cb,
 	rx_callback_t z80scc_rx_cb,tx_callback_t z80scc_tx_cb /* only on Z182 */,
 	parport_read_callback_t parport_read_cb, parport_write_callback_t parport_write_cb /* only on Z182 */)
 {
@@ -2468,6 +2476,9 @@ struct z180_device *cpu_create_z180(char *tag, UINT32 type, UINT32 clock,
 	strcat(d->z180asci_tag,"ASCI");
 	d->z180asci = z180asci_device_create(d,d->z180asci_tag,clock,
 			z180asci_rx_cb, z180asci_tx_cb);
+
+        d->z180csi_rx_cb = z180csi_rx_cb;
+        d->z180csi_tx_cb = z180csi_tx_cb;
 
 	SZHVC_add = malloc(2*256*256);
 	SZHVC_sub = malloc(2*256*256);

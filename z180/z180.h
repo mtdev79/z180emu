@@ -185,6 +185,8 @@ struct z180_device {
 	struct z180asci_device *z180asci;
 	parport_read_callback_t m_parport_read_cb;
 	parport_write_callback_t m_parport_write_cb;
+        rx_callback_t z180csi_rx_cb;
+        tx_callback_t z180csi_tx_cb;
 };
 
 //void cpu_get_info_z180(device_t *device, UINT32 state, cpuinfo *info);
@@ -202,6 +204,7 @@ struct z180_device *cpu_create_z180(char *tag, UINT32 type, UINT32 clock,
     struct address_space *ram, struct address_space *rom /* only on Z182 */, 
 	struct address_space *iospace, device_irq_acknowledge_callback irqcallback, struct z80daisy_interface *daisy_init,
 	rx_callback_t z180asci_rx_cb,tx_callback_t z180asci_tx_cb,
+	rx_callback_t z180csi_rx_cb, tx_callback_t z180csi_tx_cb,
 	rx_callback_t z80scc_rx_cb,tx_callback_t z80scc_tx_cb /* only on Z182 */,
 	parport_read_callback_t parport_read_cb, parport_write_callback_t parport_write_cb /* only on Z182 */);
 void cpu_reset_z180(device_t *device);

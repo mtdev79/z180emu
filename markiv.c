@@ -301,7 +301,7 @@ int main(int argc, char** argv)
 	atexit(destroy_rtc);
 
 	cpu = cpu_create_z180("Z180",Z180_TYPE_Z180,18432000,&ram,NULL,&iospace,irq0ackcallback,NULL/*daisychain*/,
-		asci_rx,asci_tx,NULL,NULL,NULL,NULL);
+		asci_rx,asci_tx,NULL,NULL,NULL,NULL,NULL,NULL);
 	//printf("1\n");fflush(stdout);
 	cpu_reset_z180(cpu);
 	//printf("2\n");fflush(stdout);
