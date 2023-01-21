@@ -60,11 +60,17 @@ UINT8 xmem_bank;
 struct z180_device *cpu;
                        
 UINT8 ram_read(offs_t A) {
- 	return _ram[A];
+    A &= 0xfffff;
+    return _ram[A];
 }
 
 void ram_write(offs_t A,UINT8 V) {
-    if (A >= 524288) _ram[A]=V; // low 512k is eprom
+    A &= 0xfffff;
+
+    // low 512k is eprom
+    if (A >= 524288) {
+        _ram[A]=V;
+    }
 }
 
 int char_available() {
