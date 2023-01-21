@@ -6,11 +6,11 @@ CCOPTS ?= -O3 -DSOCKETCONSOLE -std=gnu89
 
 all: sc126 p112 markiv makedisk
 
-sc126: z180.o z180dasm.o z80daisy.o z80scc.o z180asci.o sc126.o rtc_sc126.o ds1202_1302.o
-	$(CC) $(CCOPTS) -s -o $@ $^ $(SOCKLIB)
+sc126: z180.o z180dasm.o z80daisy.o z80scc.o z180asci.o sc126.o rtc_sc126.o ds1202_1302.o sdcard/sdcard.o
+	$(CC) $(CCOPTS) -g -o $@ $^ $(SOCKLIB)
 
 sc126.o: sc126.c sconsole.h z180dbg.h z180/z180.h z180/z80daisy.h z180/z80common.h ds1202_1302/ds1202_1302.h
-	$(CC) $(CCOPTS) -c $< -o $@
+	$(CC) $(CCOPTS) -g -c $< -o $@
 
 rtc_sc126.o: ds1202_1302/rtc.c ds1202_1302/rtc.h
 	cd ds1202_1302 ; $(CC) $(CCOPTS) -Dmachine_name=\"sc126\" -DHAVE_SYS_TIME_H -DHAVE_GETTIMEOFDAY -o ../rtc_sc126.o -c rtc.c
