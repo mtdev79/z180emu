@@ -4,7 +4,7 @@ endif
 
 CCOPTS ?= -O3 -DSOCKETCONSOLE -std=gnu89
 
-CFLAGS ?= $(CCOPTS) -g
+CFLAGS ?= -DSOCKETCONSOLE -g
 LDFLAGS ?= $(SOCKLIB)
 
 all: sc126 p112 markiv makedisk

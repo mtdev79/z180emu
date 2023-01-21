@@ -16,6 +16,7 @@ enum sdcard_state {
 };
 
 struct sdcard_device {
+    int fd;
     enum sdcard_state state;
     int cmd_ptr;
     int resp_ptr;
@@ -29,5 +30,6 @@ extern int sdcard_trace;
 int sdcard_read(struct sdcard_device *device, UINT8 data);
 int sdcard_write(struct sdcard_device *device, UINT8 data);
 void sdcard_reset(struct sdcard_device *sd);
+int sdcard_init(struct sdcard_device *sd, char *filename);
 
 #endif

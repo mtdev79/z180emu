@@ -347,7 +347,7 @@ int main(int argc, char** argv)
 #endif
 
 	boot1dma();
-        sdcard_reset(&sd0);
+        sdcard_init(&sd0,"sd00.img");
 
 	rtc = ds1202_1302_init("RTC",1302);
 	ds1202_1302_reset(rtc);
