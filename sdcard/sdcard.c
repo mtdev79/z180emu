@@ -23,9 +23,24 @@ typedef uint8_t UINT8;
 
 int sdcard_trace = 1;
 
+char *sdcard_state_names[] = {
+    [IDLE] = "IDLE",
+    [RX_CMD] = "RX_CMD",
+    [TX_R1] = "TX_R1",
+    [TX_R3] = "TX_R3",
+    [TX_R7] = "TX_R7",
+    [TX_R1_TX_BLOCK] = "TX_R1_TX_BLOCK",
+    [TX_R1_RX_BLOCK] = "TX_R1_RX_BLOCK",
+    [RX_BLOCK] = "RX_BLOCK",
+    [TX_RX_BLOCK_STAT] = "TX_RX_BLOCK_STAT",
+};
+
 void sdcard_setstate(struct sdcard_device *sd, enum sdcard_state newstate) {
     if (sd->state != newstate) {
-           dprint(1,"SD: old=%i, new=%i\n", sd->state, newstate);
+        dprint(1,"SD: %s -> %s\n",
+            sdcard_state_names[sd->state],
+            sdcard_state_names[newstate]
+        );
     }
     sd->state = newstate;
 }
@@ -33,6 +48,7 @@ void sdcard_setstate(struct sdcard_device *sd, enum sdcard_state newstate) {
 void sdcard_reset_ptr(struct sdcard_device *sd) {
     sd->cmd_ptr = 0;
     sd->resp_ptr = 0;
+    sd->tx_len = 0;
 }
 
 void sdcard_reset(struct sdcard_device *sd) {
@@ -69,6 +85,49 @@ void sdcard_dump(struct sdcard_device *sd) {
 
 }
 
+#define R1_0        0x00
+#define R1_OK       0x01
+#define R1_ILL_CMD  0x05
+void sdcard_resp_r1(struct sdcard_device *sd, UINT8 r1) {
+    sd->resp_ptr = 0;
+    // TODO: sd->tx_len = 0;
+    sd->r1 = r1;
+    sdcard_setstate(sd, TX_R1);
+}
+
+void sdcard_resp_reply32(struct sdcard_device *sd, int reply) {
+    sd->resp[0] = (reply >> 24) & 0xff;
+    sd->resp[1] = (reply >> 16) & 0xff;
+    sd->resp[2] = (reply >> 8) & 0xff;
+    sd->resp[3] = reply & 0xff;
+}
+
+void sdcard_resp_r3(struct sdcard_device *sd, int reply) {
+    sd->resp_ptr = 0;
+    // TODO: sd->tx_len = 4;
+    sdcard_resp_reply32(sd, reply);
+    sdcard_setstate(sd, TX_R3);
+}
+
+void sdcard_resp_r7(struct sdcard_device *sd, int reply) {
+    sd->resp_ptr = 0;
+    // TODO: sd->tx_len = 4;
+    sdcard_resp_reply32(sd, reply);
+    sdcard_setstate(sd, TX_R7);
+}
+
+void sdcard_resp_tx_block(struct sdcard_device *sd, int tx_len) {
+    sd->resp_ptr = 0;
+    sd->tx_len = tx_len;
+    sdcard_setstate(sd, TX_R1_TX_BLOCK);
+}
+
+void sdcard_resp_rx_block(struct sdcard_device *sd) {
+    sd->resp_ptr = 0;
+    sd->tx_len = 0; // We are overwriting it, so it must be zero
+    sdcard_setstate(sd, TX_R1_RX_BLOCK);
+}
+
 int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
     if (!cs) {
         // Not for us, dont drive any bits in reply
@@ -81,36 +140,76 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
         printf("SD:WR:    d=0x%02x\n", data);
     }
 
-    if (sd->state == TX_RESP) {
-        // got a write when we thought we needed a read
-        sdcard_reset(sd);
-        dprint(1,"SD: got write, expected read\n");
-    }
-    if (sd->state == IDLE) {
-        if (data &0x80) {
-            // if the first byte of a cmd doesnt have b7=0, b6=1
-            // this is probably a dummy write, stay in IDLE
-            dprint(1,"SD: got dummy write?\n");
-            return 0xff; // in write state, return is ignored
-        }
-        sdcard_setstate(sd, RX_CMD);
-        sdcard_reset_ptr(sd);
-    } else if (sd->state == WRITE_BLOCK) {
-        // FIXME - implement a buffer!
-        return 0xff; // in write state, return is ignored
-    }
-    // else bad state?
+    switch (sd->state) {
+        case TX_R1:
+        case TX_R3:
+        case TX_R7:
+        case TX_R1_TX_BLOCK:
+        case TX_R1_RX_BLOCK:
+        case TX_RX_BLOCK_STAT:
+            // got a write when we thought we needed a read
+            dprint(2,"SD: got write, expected read (data=0x%02x)\n", data);
+            /* FALL THROUGH */
 
-    sd->cmd[sd->cmd_ptr] = data;
-    sd->cmd_ptr = (sd->cmd_ptr & 0x07) + 1;
+        case IDLE:
+            if ((data & 0xc0) != 0x40) {
+                // The first two bits of a command must be 0,1
+                // otherwise, we stay in IDLE
+                dprint(2,"SD: got dummy write?\n");
+                return 0xff; // TODO: signal that we didnt drive DO
+            }
 
-    if (sd->cmd_ptr != 6) {
-        return 0xff; // in write state, return is ignored
+            sdcard_setstate(sd, RX_CMD);
+            sdcard_reset_ptr(sd);
+            /* FALL THROUGH */
+
+        case RX_CMD:
+            sd->cmd[sd->cmd_ptr++] = data;
+            if (sd->cmd_ptr < 6) {
+                return 0xff; // in write state, return is ignored
+            }
+            break;
+
+        case RX_BLOCK:
+            if (sd->resp_ptr == 0) {
+                // data token
+                if (data != 0xfe) {
+                    dprint(1,"SD: unexpected data token 0x%02x\n", data);
+                    sdcard_reset(sd);
+                }
+            } else if (sd->resp_ptr < 514) {
+                int index = sd->resp_ptr-1;
+                sd->resp[index] = data;
+            } else if (sd->resp_ptr == 515) {
+                // ignore CRC1
+            } else {
+                // ignore CRC2
+
+                // process entire block
+                int block = (
+                    sd->cmd[1]<<24 |
+                    sd->cmd[2]<<16 |
+                    sd->cmd[3]<<8 |
+                    sd->cmd[4]
+                );
+                dprint(1,"SD:WRITE: 0x%04x RX_BUFFER\n", block);
+
+                // TODO: wire up write command here
+
+                sdcard_setstate(sd, TX_RX_BLOCK_STAT);
+            }
+            sd->resp_ptr++;
+            return 0xff;
+
+        default:
+            dprint(1,"SD: unexpected state %i\n", sd->state);
+            return 0xff;
     }
+
+    // If we got here, we have an entire command packet
 
     UINT8 cmd = sd->cmd[0];
 
-    // we have a whole cmd
     // should start with 0b01xxxxxx (x = cmd)
     // should end with   0bccccccc1 (c = crc)
 
@@ -118,60 +217,52 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
 
     int rp = 0;
     switch (cmd) {
-        case 0x40: // CMD0  GO_IDLE_STATE
-            dprint(1,"SD: CMD0 GO_IDLE_STATE\n");
-        case 0x77: // CMD55 APP_CMD
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x01;
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+        case 0x40:
+            dprint(1,"SD:CMD0 GO_IDLE_STATE\n");
+            sdcard_resp_r1(sd, R1_OK);
             break;
-        case 0x48: // CMD8  SEND_IF_COND
-            dprint(1,"SD: CMD8 SEND_IF_COND\n");
-            // TODO: check arg 00 00 01 aa
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x01;
-            sd->resp[2] = 0x00;
-            sd->resp[3] = 0x00;
-            sd->resp[4] = 0x01;
-            sd->resp[5] = 0xaa;
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
-            break;
-        case 0x49: // CMD9  SEND_CSD
-            dprint(1,"SD: CMD9 SEND_CSD\n");
-            sd->resp[rp++] = 0xff;
-            sd->resp[rp++] = 0x01;
-            sd->resp[rp++] = 0xfe; // data token
 
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00; // LBA
+        case 0x48:
+            dprint(1,"SD:CMD8 SEND_IF_COND\n");
+
+            // We accept any conditions (cmd[1],cmd[2],cmd[3])
+            // And echo the check byte back (cmd[4])
+            // Should check CRC (eg, 48000001aa87 is valid)
+            int reply;
+            reply = sd->cmd[1] << 24;
+            reply |= sd->cmd[2] << 16;
+            reply |= sd->cmd[3] << 8;
+            reply |= sd->cmd[4];
+
+            sdcard_resp_r7(sd, reply);
+            break;
+
+        case 0x49:
+            dprint(1,"SD:CMD9 SEND_CSD\n");
+
+            sd->resp[rp++] = 0x40; // CSD_STRUCT and reserved bits
+            sd->resp[rp++] = 0x0e; // TAAC
+            sd->resp[rp++] = 0x00; // NSAC
+            sd->resp[rp++] = 0x32; // TRAN_SPEED 24MHz
+            sd->resp[rp++] = 0x5b; // CCC - guess
+            sd->resp[rp++] = 0x59; // CCC, READ_BL_LEN
+            sd->resp[rp++] = 0x00; // 4 bits flags, 4 bits reserved
+            sd->resp[rp++] = 0x00; // 2 bits reserved, 6 bits LBA
             sd->resp[rp++] = 0x08; // .
-            sd->resp[rp++] = 0x00; // .
             sd->resp[rp++] = 0x00; // Approx 1Gig
+            sd->resp[rp++] = 0x7f;
+            sd->resp[rp++] = 0x80;
+            sd->resp[rp++] = 0x0a;
+            sd->resp[rp++] = 0x40;
             sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            // TODO: use real sizes
+            sd->resp[rp++] = 0x01; // last bit is stop bit
+            // TODO: use real backing store for size
 
-            sd->resp[rp++] = 0x05; // CRC1
-            sd->resp[rp++] = 0x0a; // CRC2
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+            sdcard_resp_tx_block(sd, 16);
             break;
-        case 0x4a: // CMD10 SEND_CID
-            dprint(1,"SD: CMD10 SEND_CID\n");
-            sd->resp[rp++] = 0xff;
-            sd->resp[rp++] = 0x01;
-            sd->resp[rp++] = 0xfe; // data token
+
+        case 0x4a:
+            dprint(1,"SD:CMD10 SEND_CID\n");
 
             sd->resp[rp++] = 0x01; // Manuf
             sd->resp[rp++] = 'A'; // App
@@ -186,29 +277,26 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
             sd->resp[rp++] = 0x34;
             sd->resp[rp++] = 0x56;
             sd->resp[rp++] = 0x78;
-            sd->resp[rp++] = 0x00; // 2YY
-            sd->resp[rp++] = 0x01; // YM
-            sd->resp[rp++] = 0x00;
+            sd->resp[rp++] = 0x01; // m=1
+            sd->resp[rp++] = 0x01; // y=2001
+            sd->resp[rp++] = 0x01; // last bit is stop bit
 
-            sd->resp[rp++] = 0x05; // CRC1
-            sd->resp[rp++] = 0x0a; // CRC2
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+            sdcard_resp_tx_block(sd, 16);
             break;
-        case 0x50: // CMD16 SET_BLOCKLEN
-            dprint(1,"SD: CMD16 SET_BLOCKLEN\n");
+
+        case 0x50:
+            dprint(1,"SD:CMD16 SET_BLOCKLEN\n");
             // TODO: do a real check of the value
             if (sd->cmd[3] != 2) {
                 dprint(1,"SD: unexpected blocklen\n");
-                goto error;
+                sdcard_resp_r1(sd, R1_ILL_CMD);
+                break;
             }
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x01;
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+            sdcard_resp_r1(sd, R1_OK);
             break;
-        case 0x51: { // CMD17 READ_SINGLE_BLOCK
-            dprint(1,"SD: CMD17 READ_SINGLE_BLOCK\n");
+
+        case 0x51: {
+            dprint(1,"SD:CMD17 READ_SINGLE_BLOCK\n");
             int block = (
                 sd->cmd[1]<<24 |
                 sd->cmd[2]<<16 |
@@ -217,22 +305,16 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
             );
             dprint(1,"SD:READ:  0x%04x\n", block);
 
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x01;
-            sd->resp[2] = 0xfe; // data token
-
             if (lseek(sd->fd, block*0x200, SEEK_SET) != -1) {
-                read(sd->fd, &sd->resp[3], 0x200);
+                read(sd->fd, &sd->resp, 0x200);
             }
 
-            sd->resp[512+3+0] = 0x05; // CRC
-            sd->resp[512+3+1] = 0x0a;
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+            sdcard_resp_tx_block(sd, 512);
             break;
         }
-        case 0x58: { // CMD24 WRITE_BLOCK
-            dprint(1,"SD: CMD24 WRITE_BLOCK\n");
+
+        case 0x58: {
+            dprint(1,"SD:CMD24 WRITE_BLOCK\n");
             int block = (
                 sd->cmd[1]<<24 |
                 sd->cmd[2]<<16 |
@@ -241,68 +323,50 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
             );
             dprint(1,"SD:WRITE: 0x%04x\n", block);
 
-            sd->resp[rp++] = 0xff;
-            sd->resp[rp++] = 0x01;
-
-            sdcard_setstate(sd, PRE_WRITE_STAT);
-            sdcard_reset_ptr(sd);
+            sdcard_resp_rx_block(sd);
             break;
         }
 
-        case 0x7a: // CMD58 READ_OCR
-            dprint(1,"SD: CMD58 READ_OCR\n");
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x01;
-            sd->resp[2] = 0x40; // bit30 == HCS
-            sd->resp[3] = 0x00;
-            sd->resp[4] = 0x00;
-            sd->resp[5] = 0x00;
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+        case 0x77:
+            dprint(1,"SD:CMD55 APP_CMD\n");
+            sdcard_resp_r1(sd, R1_OK);
+            break;
+
+        case 0x7a:
+            dprint(1,"SD:CMD58 READ_OCR\n");
+            sdcard_resp_r3(sd, 0x40000000);
             break;
 
         // TODO: gate ACMD values on a previous CMD55 APP_CMD
-        case 0x69: // ACMD41 SEND_OP_COND
-            dprint(1,"SD: ACMD41 SEND_OP_COND\n");
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x00;
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
-            break;
-        case 0x73: // ACMD51 SEND_SCR
-            dprint(1,"SD: ACMD51 SEND_SCR\n");
-            sd->resp[rp++] = 0xff;
-            sd->resp[rp++] = 0x01;
-            sd->resp[rp++] = 0xfe; // data token
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x30; // SD_SEC_2 == SDHC
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x00;
-            sd->resp[rp++] = 0x05; // CRC1
-            sd->resp[rp++] = 0x0a; // CRC2
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+        case 0x69:
+            dprint(1,"SD:ACMD41 SEND_OP_COND\n");
+            sdcard_resp_r1(sd, R1_0);
             break;
 
-error:
+        case 0x73:
+            dprint(1,"SD:ACMD51 SEND_SCR\n");
+            sd->resp[rp++] = 0x01; // SD_SPEC v1.10
+            sd->resp[rp++] = 0xB1; // SD_SEC == SDHC, 1bit width
+            sd->resp[rp++] = 0x00;
+            sd->resp[rp++] = 0x00;
+            sd->resp[rp++] = 0x0c; // CMD_SUPPORT 58,59 + 48/49
+            sd->resp[rp++] = 0x00;
+            sd->resp[rp++] = 0x00;
+            sd->resp[rp++] = 0x00;
+            sdcard_resp_tx_block(sd, 8);
+            break;
+
         default:
-            sd->resp[0] = 0xff;
-            sd->resp[1] = 0x05; // illegal command
-            sdcard_setstate(sd, TX_RESP);
-            sdcard_reset_ptr(sd);
+            sdcard_resp_r1(sd, R1_ILL_CMD);
 
             dprint(1,"unknown\n");
             dprint(1,"SD:CMD:   cmd=0x%02x\n",cmd);
-
-            return 0xff; // in write state, return is ignored
+            break;
     }
     if (sdcard_trace>1) {
         printf("\n");
     }
+    return 0xff;
 }
 
 int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
@@ -316,37 +380,109 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
         sdcard_dump(sd);
     }
 
-    if (sd->state == RX_CMD) {
-        // got a read when we expected more writes
-        sdcard_reset(sd);
-        dprint(1,"SD: read when RX_CMD\n");
-    }
-    if (sd->state == WRITE_BLOCK) {
-        // got the read after the end of a write block
-        sdcard_setstate(sd, TX_RESP);
+    switch (sd->state) {
+        case IDLE:
+            // in idle mode, the card just outputs ones?
+            dprint(1,"SD: read while IDLE\n");
+            result = 0xff;
+            break;
 
-        dprint(1,"SD: FIXME write data accepted\n");
-        result = 0x05; // Data accepted
-        goto out;
-    }
-    if (sd->state == IDLE) {
-        // in idle mode, the card just outputs ones?
-        dprint(1,"SD: read while IDLE\n");
-        result = 0xff;
-        goto out;
+        case RX_CMD:
+            // got a read when we expected more writes
+            sdcard_reset(sd);
+            dprint(1,"SD: read when RX_CMD\n");
+            break;
+
+        case TX_R1:
+            switch (sd->resp_ptr) {
+                case 0:
+                    result = 0xff; // first resp, indicate busy
+                    break;
+                case 1:
+                    result = sd->r1; // second, return response code
+                    sdcard_setstate(sd, IDLE);
+                    break;
+            }
+            sd->resp_ptr++;
+            break;
+
+        case TX_R3:
+        case TX_R7:
+            switch (sd->resp_ptr) {
+                case 0:
+                    result = 0xff; // first resp, indicate busy
+                    break;
+                case 1:
+                    result = 0x01; // second, indicate idle mode
+                    break;
+                case 2:
+                case 3:
+                case 4:
+                    result = sd->resp[sd->resp_ptr-2];
+                    break;
+                case 5:
+                    result = sd->resp[3];
+                    sdcard_setstate(sd, IDLE);
+                    break;
+            }
+            sd->resp_ptr++;
+            break;
+
+        case TX_R1_TX_BLOCK:
+            switch (sd->resp_ptr) {
+                case 0:
+                    result = 0xff; // first resp, indicate busy
+                    break;
+                case 1:
+                    result = 0x01; // second, send R1
+                    break;
+                case 2:
+                    result = 0xfe; // finally, data token
+                    break;
+
+                default: {
+                    int index = sd->resp_ptr-3;
+
+                    if (index < sd->tx_len) {
+                        // Send the actual data
+                        result = sd->resp[index];
+                    } else if (index == sd->tx_len) {
+                        result = 0; // CRC1;
+                    } else if (index == sd->tx_len+1) {
+                        result = 0; // CRC2;
+                        sdcard_setstate(sd, IDLE);
+                    }
+                    break;
+                }
+            }
+            sd->resp_ptr++;
+            break;
+
+        case TX_R1_RX_BLOCK:
+            switch (sd->resp_ptr) {
+                case 0:
+                    result = 0xff; // first resp, indicate busy
+                    sd->resp_ptr++;
+                    break;
+                case 1:
+                    result = 0x01; // second, return idle state
+                    sdcard_reset_ptr(sd);
+                    sdcard_setstate(sd, RX_BLOCK);
+                    break;
+            }
+            break;
+
+        case TX_RX_BLOCK_STAT:
+            result = 0x05; // Data accepted
+            sdcard_setstate(sd, IDLE);
+            break;
+
+        default:
+            dprint(1,"SD: unexpected state %i\n", sd->state);
+            result = 0xff;
+            break;
     }
 
-    result = sd->resp[sd->resp_ptr];
-    sd->resp_ptr = sd->resp_ptr + 1;
-    if (sd->resp_ptr >= sizeof(sd->resp)) {
-        sd->resp_ptr = 0;
-    }
-
-    if (sd->state == PRE_WRITE_STAT && sd->resp_ptr == 2) {
-        sdcard_setstate(sd, WRITE_BLOCK);
-    }
-
-out:
     if (sdcard_trace>1) {
         printf("SD:RD:    r=0x%02x\n", result);
     }

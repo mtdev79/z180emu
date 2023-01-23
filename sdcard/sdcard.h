@@ -7,12 +7,17 @@
 #ifndef SDCARD_H
 #define SDCARD_H
 
+// Remember to update sdcard_state_names too
 enum sdcard_state {
     IDLE = 0,
     RX_CMD,
-    TX_RESP,
-    PRE_WRITE_STAT,
-    WRITE_BLOCK,
+    TX_R1,
+    TX_R3,
+    TX_R7,
+    TX_R1_TX_BLOCK,
+    TX_R1_RX_BLOCK,
+    RX_BLOCK,
+    TX_RX_BLOCK_STAT,
 };
 
 struct sdcard_device {
@@ -20,6 +25,8 @@ struct sdcard_device {
     enum sdcard_state state;
     int cmd_ptr;
     int resp_ptr;
+    int tx_len; // size of valid data in resp to TX
+    UINT8 r1; // result code to send with R1
     UINT8 cmd[8];
     UINT8 resp[512+6];
 };
