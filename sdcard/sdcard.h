@@ -27,9 +27,8 @@ struct sdcard_device {
 extern int sdcard_trace;
 
 // TODO: technically, SPI is simultaneous readwrite
-int sdcard_read(struct sdcard_device *device, UINT8 data);
-int sdcard_write(struct sdcard_device *device, UINT8 data);
-void sdcard_reset(struct sdcard_device *sd);
+int sdcard_read(struct sdcard_device *device, int cs, UINT8 data);
+int sdcard_write(struct sdcard_device *device, int cs, UINT8 data);
 int sdcard_init(struct sdcard_device *sd, char *filename);
 
 #endif

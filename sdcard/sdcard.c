@@ -69,8 +69,14 @@ void sdcard_dump(struct sdcard_device *sd) {
 
 }
 
-int sdcard_write(struct sdcard_device *sd, UINT8 data) {
-    if (sdcard_trace) {
+int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
+    if (!cs) {
+        // Not for us, dont drive any bits in reply
+        return 0;
+        // TODO: detect init sequence
+    }
+
+    if (sdcard_trace>1) {
         sdcard_dump(sd);
         printf("SD:WR:    d=0x%02x\n", data);
     }
@@ -294,14 +300,19 @@ error:
 
             return 0xff; // in write state, return is ignored
     }
-    if (sdcard_trace) {
+    if (sdcard_trace>1) {
         printf("\n");
     }
 }
 
-int sdcard_read(struct sdcard_device *sd, UINT8 data) {
+int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
+    if (!cs) {
+        // Not for us, dont drive any bits in reply
+        return 0;
+    }
+
     UINT8 result;
-    if (sdcard_trace) {
+    if (sdcard_trace>1) {
         sdcard_dump(sd);
     }
 
@@ -336,7 +347,7 @@ int sdcard_read(struct sdcard_device *sd, UINT8 data) {
     }
 
 out:
-    if (sdcard_trace) {
+    if (sdcard_trace>1) {
         printf("SD:RD:    r=0x%02x\n", result);
     }
     return result;

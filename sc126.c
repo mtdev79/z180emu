@@ -158,26 +158,16 @@ UINT8 rtc_latch;
 struct sdcard_device sd0;
 
 void sci_write(device_t *device, int channel, UINT8 data) {
-    if ((rtc_latch & 0x04) == 0) {
-        // The /CS0 is active
-        sdcard_write(&sd0, mirtab[data]);
-    } else {
-        printf("IO:CSI:   TRDR   = 0x%02x (latch=", data);
-        print_bin_u8(rtc_latch);
-        printf(")\n");
-    }
+    int cs0 = (rtc_latch & 0x04) == 0;
+    sdcard_write(&sd0, cs0, mirtab[data]);
 }
 
 int sci_read(device_t *device, int channel) {
+    int cs0 = (rtc_latch & 0x04) == 0;
     int result = 0xff;
-    if ((rtc_latch & 0x04) == 0) {
-        // The /CS0 is active
-        result = mirtab[sdcard_read(&sd0, 0xff)];
-    } else {
-        printf("IO:CSI:   TRDR          (latch=");
-        print_bin_u8(rtc_latch);
-        printf(")\n");
-    }
+    result = mirtab[sdcard_read(&sd0, cs0, 0xff)];
+    // TODO: multiple cards requires knowing if DO was driven
+
     return result;
 }
 
