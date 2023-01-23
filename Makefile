@@ -9,7 +9,8 @@ LDFLAGS ?= $(SOCKLIB)
 
 all: sc126 p112 markiv makedisk
 
-sc126.c: sconsole.h z180dbg.h z180/z180.h z180/z80daisy.h z180/z80common.h ds1202_1302/ds1202_1302.h sdcard/sdcard.h
+
+sc126.o: sc126.c sconsole.h z180dbg.h z180/z180.h z180/z80daisy.h z180/z80common.h ds1202_1302/ds1202_1302.h sdcard/sdcard.h
 sc126: sc126.o
 sc126: z180/z180.o z180/z180dasm.o z180/z80daisy.o z180/z80scc.o z180/z180asci.o
 sc126: ds1202_1302/rtc_sc126.o ds1202_1302/ds1202_1302.o
