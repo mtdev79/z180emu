@@ -7,10 +7,14 @@
 #ifndef SDCARD_H
 #define SDCARD_H
 
+// States are named from the SDcard's point of view (thus "TX" is the card
+// intends to transmit)
+//
 // Remember to update sdcard_state_names too
 enum sdcard_state {
     IDLE = 0,
     RX_CMD,
+    TX_BUSY,
     TX_R1,
     TX_R3,
     TX_R7,
@@ -18,11 +22,14 @@ enum sdcard_state {
     TX_R1_RX_BLOCK,
     RX_BLOCK,
     TX_RX_BLOCK_STAT,
+
+    NEXT,   // Pseudo state, requesting to shift to the "next" state
 };
 
 struct sdcard_device {
     int fd;
     enum sdcard_state state;
+    enum sdcard_state state_next;
     int cmd_ptr;
     int resp_ptr;
     int tx_len; // size of valid data in resp to TX

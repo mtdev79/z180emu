@@ -26,6 +26,7 @@ int sdcard_trace = 1;
 char *sdcard_state_names[] = {
     [IDLE] = "IDLE",
     [RX_CMD] = "RX_CMD",
+    [TX_BUSY] = "TX_BUSY",
     [TX_R1] = "TX_R1",
     [TX_R3] = "TX_R3",
     [TX_R7] = "TX_R7",
@@ -33,9 +34,15 @@ char *sdcard_state_names[] = {
     [TX_R1_RX_BLOCK] = "TX_R1_RX_BLOCK",
     [RX_BLOCK] = "RX_BLOCK",
     [TX_RX_BLOCK_STAT] = "TX_RX_BLOCK_STAT",
+
+    [NEXT] = "next",
 };
 
 void sdcard_setstate(struct sdcard_device *sd, enum sdcard_state newstate) {
+    if (newstate == NEXT) {
+        newstate = sd->state_next;
+        sd->state_next = IDLE;
+    }
     if (sd->state != newstate) {
         dprint(1,"SD: %s -> %s\n",
             sdcard_state_names[sd->state],
@@ -92,7 +99,8 @@ void sdcard_resp_r1(struct sdcard_device *sd, UINT8 r1) {
     sd->resp_ptr = 0;
     // TODO: sd->tx_len = 0;
     sd->r1 = r1;
-    sdcard_setstate(sd, TX_R1);
+    sd->state_next = TX_R1;
+    sdcard_setstate(sd, TX_BUSY);
 }
 
 void sdcard_resp_reply32(struct sdcard_device *sd, int reply) {
@@ -107,27 +115,32 @@ void sdcard_resp_r3(struct sdcard_device *sd, UINT8 r1, int value) {
     sd->r1 = r1;
     // TODO: sd->tx_len = 4;
     sdcard_resp_reply32(sd, value);
-    sdcard_setstate(sd, TX_R3);
+    sd->state_next = TX_R3;
+    sdcard_setstate(sd, TX_BUSY);
 }
 
+// TODO: r7 is almost identical to r3, coalesce them
 void sdcard_resp_r7(struct sdcard_device *sd, int value) {
     sd->resp_ptr = 0;
     sd->r1 = R1_OK;
     // TODO: sd->tx_len = 4;
     sdcard_resp_reply32(sd, value);
-    sdcard_setstate(sd, TX_R7);
+    sd->state_next = TX_R7;
+    sdcard_setstate(sd, TX_BUSY);
 }
 
 void sdcard_resp_tx_block(struct sdcard_device *sd, int tx_len) {
     sd->resp_ptr = 0;
     sd->tx_len = tx_len;
-    sdcard_setstate(sd, TX_R1_TX_BLOCK);
+    sd->state_next = TX_R1_TX_BLOCK;
+    sdcard_setstate(sd, TX_BUSY);
 }
 
 void sdcard_resp_rx_block(struct sdcard_device *sd) {
     sd->resp_ptr = 0;
     sd->tx_len = 0; // We are overwriting it, so it must be zero
-    sdcard_setstate(sd, TX_R1_RX_BLOCK);
+    sd->state_next = TX_R1_RX_BLOCK;
+    sdcard_setstate(sd, TX_BUSY);
 }
 
 int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
@@ -395,34 +408,28 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
             dprint(1,"SD: read when RX_CMD\n");
             break;
 
+        case TX_BUSY:
+            result = 0xff; // first resp, indicate busy
+            sdcard_setstate(sd, NEXT);
+            break;
+
         case TX_R1:
-            switch (sd->resp_ptr) {
-                case 0:
-                    result = 0xff; // first resp, indicate busy
-                    break;
-                case 1:
-                    result = sd->r1; // second, return response code
-                    sdcard_setstate(sd, IDLE);
-                    break;
-            }
-            sd->resp_ptr++;
+            result = sd->r1; // second, return response code
+            sdcard_setstate(sd, IDLE);
             break;
 
         case TX_R3:
         case TX_R7:
             switch (sd->resp_ptr) {
                 case 0:
-                    result = 0xff; // first resp, indicate busy
-                    break;
-                case 1:
                     result = sd->r1; // second, return response code
                     break;
+                case 1:
                 case 2:
                 case 3:
-                case 4:
-                    result = sd->resp[sd->resp_ptr-2];
+                    result = sd->resp[sd->resp_ptr-1];
                     break;
-                case 5:
+                case 4:
                     result = sd->resp[3];
                     sdcard_setstate(sd, IDLE);
                     break;
@@ -433,17 +440,14 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
         case TX_R1_TX_BLOCK:
             switch (sd->resp_ptr) {
                 case 0:
-                    result = 0xff; // first resp, indicate busy
-                    break;
-                case 1:
                     result = 0x00; // second, send R1
                     break;
-                case 2:
+                case 1:
                     result = 0xfe; // finally, data token
                     break;
 
                 default: {
-                    int index = sd->resp_ptr-3;
+                    int index = sd->resp_ptr-2;
 
                     if (index < sd->tx_len) {
                         // Send the actual data
@@ -461,17 +465,9 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
             break;
 
         case TX_R1_RX_BLOCK:
-            switch (sd->resp_ptr) {
-                case 0:
-                    result = 0xff; // first resp, indicate busy
-                    sd->resp_ptr++;
-                    break;
-                case 1:
-                    result = 0x01; // second, return idle state
-                    sdcard_reset_ptr(sd);
-                    sdcard_setstate(sd, RX_BLOCK);
-                    break;
-            }
+            result = 0x01; // second, return idle state
+            sdcard_reset_ptr(sd);
+            sdcard_setstate(sd, RX_BLOCK);
             break;
 
         case TX_RX_BLOCK_STAT:
