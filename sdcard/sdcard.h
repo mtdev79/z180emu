@@ -13,15 +13,19 @@
 // Remember to update sdcard_state_names too
 enum sdcard_state {
     IDLE = 0,
+
     RX_CMD,
+    RX_BLOCK,
+
     TX_BUSY,
     TX_R1,
     TX_R3,
     TX_R7,
     TX_IMM32,
-    TX_R1_TX_BLOCK,
-    TX_R1_RX_BLOCK,
-    RX_BLOCK,
+    TX_BLOCK_R1,
+    TX_BLOCK_TOKEN,
+    TX_BLOCK_BUF,
+    TX_RX_BLOCK_R1,
     TX_RX_BLOCK_STAT,
 
     NEXT,   // Pseudo state, requesting to shift to the "next" state
