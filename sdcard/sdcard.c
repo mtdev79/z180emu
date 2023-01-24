@@ -102,17 +102,19 @@ void sdcard_resp_reply32(struct sdcard_device *sd, int reply) {
     sd->resp[3] = reply & 0xff;
 }
 
-void sdcard_resp_r3(struct sdcard_device *sd, int reply) {
+void sdcard_resp_r3(struct sdcard_device *sd, UINT8 r1, int value) {
     sd->resp_ptr = 0;
+    sd->r1 = r1;
     // TODO: sd->tx_len = 4;
-    sdcard_resp_reply32(sd, reply);
+    sdcard_resp_reply32(sd, value);
     sdcard_setstate(sd, TX_R3);
 }
 
-void sdcard_resp_r7(struct sdcard_device *sd, int reply) {
+void sdcard_resp_r7(struct sdcard_device *sd, int value) {
     sd->resp_ptr = 0;
+    sd->r1 = R1_OK;
     // TODO: sd->tx_len = 4;
-    sdcard_resp_reply32(sd, reply);
+    sdcard_resp_reply32(sd, value);
     sdcard_setstate(sd, TX_R7);
 }
 
@@ -334,7 +336,7 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
 
         case 0x7a:
             dprint(1,"SD:CMD58 READ_OCR\n");
-            sdcard_resp_r3(sd, 0x40000000);
+            sdcard_resp_r3(sd, R1_0, 0x40000000);
             break;
 
         // TODO: gate ACMD values on a previous CMD55 APP_CMD
@@ -413,7 +415,7 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
                     result = 0xff; // first resp, indicate busy
                     break;
                 case 1:
-                    result = 0x01; // second, indicate idle mode
+                    result = sd->r1; // second, return response code
                     break;
                 case 2:
                 case 3:
@@ -434,7 +436,7 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
                     result = 0xff; // first resp, indicate busy
                     break;
                 case 1:
-                    result = 0x01; // second, send R1
+                    result = 0x00; // second, send R1
                     break;
                 case 2:
                     result = 0xfe; // finally, data token
