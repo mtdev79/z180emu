@@ -30,6 +30,7 @@ char *sdcard_state_names[] = {
     [TX_R1] = "TX_R1",
     [TX_R3] = "TX_R3",
     [TX_R7] = "TX_R7",
+    [TX_IMM32] = "TX_IMM32",
     [TX_R1_TX_BLOCK] = "TX_R1_TX_BLOCK",
     [TX_R1_RX_BLOCK] = "TX_R1_RX_BLOCK",
     [RX_BLOCK] = "RX_BLOCK",
@@ -120,9 +121,9 @@ void sdcard_resp_r3(struct sdcard_device *sd, UINT8 r1, int value) {
 }
 
 // TODO: r7 is almost identical to r3, coalesce them
-void sdcard_resp_r7(struct sdcard_device *sd, int value) {
+void sdcard_resp_r7(struct sdcard_device *sd, UINT8 r1, int value) {
     sd->resp_ptr = 0;
-    sd->r1 = R1_OK;
+    sd->r1 = r1;
     // TODO: sd->tx_len = 4;
     sdcard_resp_reply32(sd, value);
     sd->state_next = TX_R7;
@@ -139,6 +140,7 @@ void sdcard_resp_tx_block(struct sdcard_device *sd, int tx_len) {
 void sdcard_resp_rx_block(struct sdcard_device *sd) {
     sd->resp_ptr = 0;
     sd->tx_len = 0; // We are overwriting it, so it must be zero
+    sd->r1 = 0x01; // afterwards, return idle state
     sd->state_next = TX_R1_RX_BLOCK;
     sdcard_setstate(sd, TX_BUSY);
 }
@@ -159,6 +161,7 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
         case TX_R1:
         case TX_R3:
         case TX_R7:
+        case TX_IMM32:
         case TX_R1_TX_BLOCK:
         case TX_R1_RX_BLOCK:
         case TX_RX_BLOCK_STAT:
@@ -211,13 +214,14 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
 
                 // TODO: wire up write command here
 
+                sd->r1 = 0x05; // Data accepted
                 sdcard_setstate(sd, TX_RX_BLOCK_STAT);
             }
             sd->resp_ptr++;
             return 0xff;
 
         default:
-            dprint(1,"SD: unexpected state %i\n", sd->state);
+            dprint(1,"SD:WR: unexpected state %i\n", sd->state);
             return 0xff;
     }
 
@@ -249,7 +253,7 @@ int sdcard_write(struct sdcard_device *sd, int cs, UINT8 data) {
             reply |= sd->cmd[3] << 8;
             reply |= sd->cmd[4];
 
-            sdcard_resp_r7(sd, reply);
+            sdcard_resp_r7(sd, R1_OK, reply);
             break;
 
         case 0x49:
@@ -413,28 +417,24 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
             sdcard_setstate(sd, NEXT);
             break;
 
-        case TX_R1:
-            result = sd->r1; // second, return response code
-            sdcard_setstate(sd, IDLE);
-            break;
-
         case TX_R3:
         case TX_R7:
-            switch (sd->resp_ptr) {
-                case 0:
-                    result = sd->r1; // second, return response code
-                    break;
-                case 1:
-                case 2:
-                case 3:
-                    result = sd->resp[sd->resp_ptr-1];
-                    break;
-                case 4:
-                    result = sd->resp[3];
-                    sdcard_setstate(sd, IDLE);
-                    break;
-            }
+            sd->state_next = TX_IMM32;
+            /* FALL THROUGH */
+
+        case TX_R1:
+            result = sd->r1; // second, return response code
+            sdcard_setstate(sd, NEXT);
+            break;
+
+        case TX_IMM32:
+            result = sd->resp[sd->resp_ptr];
             sd->resp_ptr++;
+
+            if (sd->resp_ptr==4) {
+                sdcard_setstate(sd, IDLE);
+            }
+
             break;
 
         case TX_R1_TX_BLOCK:
@@ -465,18 +465,18 @@ int sdcard_read(struct sdcard_device *sd, int cs, UINT8 data) {
             break;
 
         case TX_R1_RX_BLOCK:
-            result = 0x01; // second, return idle state
+            result = sd->r1;
             sdcard_reset_ptr(sd);
             sdcard_setstate(sd, RX_BLOCK);
             break;
 
         case TX_RX_BLOCK_STAT:
-            result = 0x05; // Data accepted
+            result = sd->r1;
             sdcard_setstate(sd, IDLE);
             break;
 
         default:
-            dprint(1,"SD: unexpected state %i\n", sd->state);
+            dprint(1,"SD:RD: unexpected state %i\n", sd->state);
             result = 0xff;
             break;
     }

@@ -18,6 +18,7 @@ enum sdcard_state {
     TX_R1,
     TX_R3,
     TX_R7,
+    TX_IMM32,
     TX_R1_TX_BLOCK,
     TX_R1_RX_BLOCK,
     RX_BLOCK,
