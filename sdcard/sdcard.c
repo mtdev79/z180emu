@@ -144,8 +144,8 @@ void sdcard_resp_tx_block(struct sdcard_device *sd, UINT8 r1, int tx_len) {
 
 void sdcard_resp_rx_block(struct sdcard_device *sd) {
     sd->resp_ptr = 0;
-    sd->tx_len = 0; // We are overwriting it, so it must be zero
-    sd->r1 = 0x01; // afterwards, return idle state
+    sd->tx_len = 0; // This overwrites the buffer, so mark it as empty
+    sd->r1 = 0; // R1 should indicate not idle
     sd->state_next = TX_RX_BLOCK_R1;
     sdcard_setstate(sd, TX_BUSY);
 }
