@@ -1,0 +1,35 @@
+---
+name: CI
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 22 * *"
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Fix Checkout
+        run: |
+          git fetch --force --tags
+
+      - name: Run minimal test build
+        run: |
+          make all
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: z180emu
+          path: |
+            p112
+            markiv
+            makedisk

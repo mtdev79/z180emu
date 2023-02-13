@@ -1,0 +1,14 @@
+
+# Intermediate objects generated during compile
+*.o
+
+# Compiled output
+makedisk
+markiv
+p112
+sc126
+
+# Binary ROMs needed for the emulators
+markivrom.bin
+p112rom.bin
+sc126rom.bin

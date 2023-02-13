@@ -4,7 +4,20 @@ endif
 
 CCOPTS ?= -O3 -DSOCKETCONSOLE -std=gnu89
 
-all: p112 markiv makedisk
+CFLAGS ?= -DSOCKETCONSOLE -g
+LDFLAGS ?= $(SOCKLIB)
+
+all: sc126 p112 markiv makedisk
+
+
+sc126.o: sc126.c sconsole.h z180dbg.h z180/z180.h z180/z80daisy.h z180/z80common.h ds1202_1302/ds1202_1302.h sdcard/sdcard.h
+sc126: sc126.o
+sc126: z180/z180.o z180/z180dasm.o z180/z80daisy.o z180/z80scc.o z180/z180asci.o
+sc126: ds1202_1302/rtc_sc126.o ds1202_1302/ds1202_1302.o
+sc126: sdcard/sdcard.o
+
+ds1202_1302/rtc_sc126.o: ds1202_1302/rtc.c ds1202_1302/rtc.h
+	$(CC) $(CFLAGS) -Dmachine_name=\"sc126\" -DHAVE_SYS_TIME_H -DHAVE_GETTIMEOFDAY -o $@ -c $<
 
 markiv: ide.o z180.o z180dasm.o z80daisy.o z80scc.o z180asci.o markiv.o rtc_markiv.o ds1202_1302.o
 	$(CC) $(CCOPTS) -s -o markiv $^ $(SOCKLIB)

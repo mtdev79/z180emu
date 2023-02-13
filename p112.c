@@ -406,7 +406,7 @@ int main(int argc, char** argv)
 	fdd_load(BOOT_FDD,"p112-fdd1.img");
 			
 	cpu = cpu_create_z180("Z182",Z180_TYPE_Z182,16000000,&ram,&rom,&iospace,irq0ackcallback,NULL/*daisychain*/,
-		NULL,NULL,escc_rx,escc_tx,parport_read,parport_write);
+		NULL,NULL,NULL,NULL,escc_rx,escc_tx,parport_read,parport_write);
 	//printf("1\n");fflush(stdout);
 	cpu_reset_z180(cpu);
 	//printf("2\n");fflush(stdout);
